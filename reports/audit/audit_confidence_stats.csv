@@ -1,0 +1,9 @@
+column,metric,value
+confidence,min,0.2009132420091324
+confidence,max,0.997898979043525
+confidence,mean,0.8292634073105503
+confidence,std,0.19854226709795922
+base_confidence,min,0.23154848046309695
+base_confidence,max,1.0
+base_confidence,mean,0.8840572429303827
+base_confidence,std,0.12006499007483368

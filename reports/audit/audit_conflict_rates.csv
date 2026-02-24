@@ -1,0 +1,8 @@
+attribute,both_missing_pct,one_missing_pct,same_pct,conflict_pct,comparable_rows
+phones,0.0015,0.0535,0.2115,0.7335,1890
+categories,0.006,0.002,0.286,0.706,1984
+addresses,0.0,0.0,0.477,0.523,2000
+names,0.0,0.0,0.4915,0.5085,2000
+socials,0.2245,0.3465,0.0225,0.4065,858
+websites,0.001,0.1435,0.4595,0.396,1711
+emails,0.5,0.5,0.0,0.0,0

@@ -1,0 +1,69 @@
+{
+  "feature_columns": [
+    "current_missing",
+    "base_missing",
+    "conf_current",
+    "conf_base",
+    "conf_delta",
+    "quality_current",
+    "quality_base",
+    "quality_delta",
+    "source_count_current",
+    "source_count_base",
+    "source_count_delta",
+    "token_count_current",
+    "token_count_base",
+    "token_count_delta",
+    "pair_similarity",
+    "attr_names",
+    "attr_categories",
+    "attr_websites",
+    "attr_phones",
+    "attr_addresses",
+    "attr_emails",
+    "attr_socials"
+  ],
+  "attributes": [
+    "names",
+    "categories",
+    "websites",
+    "phones",
+    "addresses",
+    "emails",
+    "socials"
+  ],
+  "metrics": {
+    "accuracy": 0.991869918699187,
+    "support_test": 1968,
+    "classification_report": {
+      "base": {
+        "precision": 0.9922737306843267,
+        "recall": 0.9900881057268722,
+        "f1-score": 0.9911797133406836,
+        "support": 908.0
+      },
+      "current": {
+        "precision": 0.9915254237288136,
+        "recall": 0.9933962264150943,
+        "f1-score": 0.9924599434495759,
+        "support": 1060.0
+      },
+      "accuracy": 0.991869918699187,
+      "macro avg": {
+        "precision": 0.9918995772065702,
+        "recall": 0.9917421660709833,
+        "f1-score": 0.9918198283951297,
+        "support": 1968.0
+      },
+      "weighted avg": {
+        "precision": 0.9918706791737353,
+        "recall": 0.991869918699187,
+        "f1-score": 0.9918692681757576,
+        "support": 1968.0
+      }
+    }
+  },
+  "training_rows": 9836,
+  "manual_label_rows": 0,
+  "proxy_label_rows": 9836
+}
