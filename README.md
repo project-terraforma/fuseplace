@@ -1,19 +1,61 @@
 # FusePlace
 
-Project A: Places Attribute Conflation (CRWN 102, Winter 2026)
+Project A: Places Attribute Conflation (CRWN 102, Winter 2026)  
+Team: Satvik Khanna, Kate Mikhailova
 
-FusePlace is an end-to-end starter repository for **attribute-level conflation** on pre-matched place pairs. It is built to match the Project A mission from your slides:
+## Project Goal
 
-1. Create a golden dataset (manual labels).
-2. Build selection logic (rule-based and ML).
-3. Evaluate which method performs better.
+Different sources often describe the same real-world place with conflicting values (name, website, phone, address, category, etc.).  
+Our goal is to build a pipeline that:
 
-## Included Data
+1. Creates a golden dataset for manual ground truth.
+2. Implements automated attribute selection logic.
+3. Compares methods and reports results.
 
-- `data/project_a_samples.parquet` (copied from your provided sample file)
-- `data/readme_project_a_samples.txt`
+## What We Built
 
-Each row compares a conflated record (`names`, `phones`, `websites`, etc.) with a base record (`base_names`, `base_phones`, `base_websites`, etc.).
+This repository was completed from an initial empty starter and now includes:
+
+1. **Data + project structure**
+Added `data/project_a_samples.parquet` and reproducible folder layout for analysis, reports, scripts, and tests.
+
+2. **Inspection pipeline**
+Built scripts to inspect schema, missingness, side-by-side base/current pairs, and disagreement rates. Generated a golden dataset template for manual labeling.
+
+3. **Attribute-specific analysis**
+Added per-attribute inspection scripts for `categories`, `addresses`, `phones`, and `websites`.
+
+4. **Data quality audit**
+Added audit scripts that export missingness, confidence stats, and conflict examples.
+
+5. **Two conflation baselines**
+Implemented a **rule-based** selector using confidence + attribute quality heuristics, and an **ML baseline** (logistic regression) using features like confidence, token overlap, missingness, source counts, and quality deltas.
+
+6. **Evaluation tooling**
+Added a comparison script for rule vs ML against manual golden labels.
+
+7. **Tests**
+Added unit tests for parsing/normalization and rule-decision behavior.
+
+## Current Run Snapshot (from provided sample parquet)
+
+Dataset:
+- 2,000 rows
+- 22 columns
+- 7 core attribute pairs (`names`, `categories`, `websites`, `phones`, `addresses`, `emails`, `socials`)
+
+Observed conflict rates (comparable rows):
+- `phones`: 73.35%
+- `categories`: 70.60%
+- `addresses`: 52.30%
+- `names`: 50.85%
+- `websites`: 39.60%
+- `socials`: 40.65% (on non-missing comparable subset)
+
+ML training status:
+- Model currently trains successfully.
+- Since manual labels are still empty, current ML metrics are based on proxy labels only.
+- Final method comparison requires filling manual labels in the golden file.
 
 ## Repository Structure
 
@@ -44,82 +86,47 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Workflow
+## How To Reproduce
 
-### 1) Inspect and sample the dataset
+Run full pipeline:
 
 ```bash
 python3 -m scripts.inspect_dataset
-```
-
-Outputs:
-- `analysis/inspection/side_by_side/side_by_side_sample.csv`
-- `analysis/inspection/side_by_side/side_by_side_sample.jsonl`
-- `analysis/inspection/golden/golden_dataset_template.json`
-- `analysis/inspection/attribute_disagreement_rates.csv`
-
-### 2) Run attribute-specific inspection
-
-```bash
 python3 -m scripts.attributes.inspect_categories
 python3 -m scripts.attributes.inspect_addresses
 python3 -m scripts.attributes.inspect_phones
 python3 -m scripts.attributes.inspect_websites
-```
-
-Outputs land in `analysis/inspection/attributes/`.
-
-### 3) Run data quality audit
-
-```bash
 python3 -m scripts.data_audit
-```
-
-Outputs land in `reports/audit/`.
-
-### 4) Run rule-based conflation baseline
-
-```bash
 python3 -m scripts.conflation.rule_based_selection
-```
-
-Outputs:
-- `reports/conflation/rule_attribute_decisions.csv`
-- `reports/conflation/rule_selected_records.csv`
-- `reports/conflation/rule_summary.csv`
-
-### 5) Build ML conflation baseline
-
-Manual labeling step:
-- Fill `labels` in `analysis/inspection/golden/golden_dataset_template.json`.
-- Use `current` or `base` per attribute when you can decide.
-- Leave empty for undecidable records.
-
-Then run:
-
-```bash
 python3 -m scripts.conflation.ml_selection
-```
-
-If labels are still mostly empty, ML training falls back to proxy labels by default.
-
-Outputs:
-- `models/ml_selector.joblib`
-- `reports/conflation/ml_training_metrics.json`
-- `reports/conflation/ml_attribute_decisions.csv`
-- `reports/conflation/ml_selected_records.csv`
-- `reports/conflation/ml_summary.csv`
-
-### 6) Evaluate methods against manual labels
-
-```bash
 python3 -m scripts.conflation.evaluate_methods
 ```
 
-Output:
+Key outputs:
+- `analysis/inspection/golden/golden_dataset_template.json`
+- `reports/audit/audit_conflict_rates.csv`
+- `reports/conflation/rule_attribute_decisions.csv`
+- `reports/conflation/ml_attribute_decisions.csv`
 - `reports/conflation/method_evaluation_against_golden.csv`
 
-## Running Tests
+## Manual Labeling Step (Required for Final Evaluation)
+
+Fill `labels` in:
+- `analysis/inspection/golden/golden_dataset_template.json`
+
+Use:
+- `current` if conflated value is better
+- `base` if base value is better
+- leave blank when undecidable
+
+Then rerun:
+
+```bash
+python3 -m scripts.conflation.ml_selection
+python3 -m scripts.conflation.evaluate_methods
+```
+
+## Run Tests
 
 ```bash
 python3 -m unittest discover -s tests -p 'test_*.py'
@@ -127,6 +134,6 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 
 ## Notes
 
-- Default input parquet path is `data/project_a_samples.parquet`.
-- Most scripts accept `--input` if you want to swap datasets.
-- This repo is intentionally structured to support both course deliverables and reproducible experimentation.
+- Default input parquet is `data/project_a_samples.parquet`.
+- Most scripts support `--input` for alternate parquet files.
+- This repo is designed to map directly to Project A deliverables: golden data, selection algorithms, and evaluation report artifacts.
