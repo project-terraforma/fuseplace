@@ -1,7 +1,7 @@
 # FusePlace
 
 Project A: Places Attribute Conflation (CRWN 102, Winter 2026)  
-Team: Satvik Khanna, Kate Mikhailova
+Team: Satvik Khanna
 
 ## Project Goal
 
