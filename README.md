@@ -6,74 +6,119 @@ Team: Satvik Khanna
 ## Project Goal
 
 Different sources often describe the same real-world place with conflicting values (name, website, phone, address, category, etc.).  
-Our goal is to build a pipeline that:
+The goal is to build a pipeline that:
 
-1. Creates a golden dataset for manual ground truth.
+1. Creates a golden dataset with ground-truth labels.
 2. Implements automated attribute selection logic.
-3. Compares methods and reports results.
+3. Compares methods and reports F1 scores.
 
-## What We Built
+## Approach
 
-This repository was completed from an initial empty starter and now includes:
+### Data
 
-1. **Data + project structure**
-Added `data/project_a_samples.parquet` and reproducible folder layout for analysis, reports, scripts, and tests.
+- **Source**: 2,000 pre-matched place pairs from [Overture Maps](https://overturemaps.org/) (Meta + Microsoft sources).
+- **Expansion**: 1,449 additional pairs created by pairing Overture records with [Yelp Fusion API](https://docs.developer.yelp.com/docs/fusion-intro) data, giving genuine attribute differences between sources.
+- **Total**: 3,449 place pairs across 7 attributes (`names`, `categories`, `websites`, `phones`, `addresses`, `emails`, `socials`).
 
-2. **Inspection pipeline**
-Built scripts to inspect schema, missingness, side-by-side base/current pairs, and disagreement rates. Generated a golden dataset template for manual labeling.
+### Golden Dataset & Labeling
 
-3. **Attribute-specific analysis**
-Added per-attribute inspection scripts for `categories`, `addresses`, `phones`, and `websites`.
+Ground-truth labels were built in three layers:
 
-4. **Data quality audit**
-Added audit scripts that export missingness, confidence stats, and conflict examples.
+1. **Trivial auto-labeling** — if one side is missing, the other wins.
+2. **Yelp verification** — for 1,449 US businesses matched via the Yelp Fusion API, labels were assigned by comparing both Overture sources against the Yelp-verified data (independent third-party ground truth).
+3. **Domain heuristic labeling** — for records without Yelp coverage, attribute-specific heuristics (name completeness, address field count, phone country codes, category specificity, URL quality) were used.
 
-5. **Two conflation baselines**
-Implemented a **rule-based** selector using confidence + attribute quality heuristics, and an **ML baseline** (logistic regression) using features like confidence, token overlap, missingness, source counts, and quality deltas.
+Total: **24,143 labeled attribute pairs** across 3,449 records.
 
-6. **Evaluation tooling**
-Added a comparison script for rule vs ML against manual golden labels.
+### ML Pipeline (Per-Attribute Hybrid)
 
-7. **Tests**
-Added unit tests for parsing/normalization and rule-decision behavior.
+Instead of one shared model, **7 independent models** are trained — one per attribute — since each attribute has different signal patterns (phones care about country codes; categories care about specificity).
 
-## Current Run Snapshot (from provided sample parquet)
+**Feature engineering** (37+ features per pair):
+- Core: confidence, quality scores, source counts, token counts, pair similarity
+- Edit distance: Levenshtein ratio, partial ratio, token sort ratio (via rapidfuzz)
+- N-gram overlap: character trigram Jaccard similarity
+- Recency: source freshness parsed from update timestamps
+- Source diversity: count of unique contributing datasets per side
+- Attribute-specific structural features (address field counts, phone country codes, category counts, HTTPS detection, URL path depth, social URL detection, character/word counts)
 
-Dataset:
-- 2,000 rows
-- 22 columns
-- 7 core attribute pairs (`names`, `categories`, `websites`, `phones`, `addresses`, `emails`, `socials`)
+**Model selection** — four candidates are compared per attribute via stratified 5-fold cross-validation:
+- Logistic Regression (with StandardScaler)
+- Random Forest
+- Gradient Boosting
+- XGBoost
 
-Observed conflict rates (comparable rows):
-- `phones`: 73.35%
-- `categories`: 70.60%
-- `addresses`: 52.30%
-- `names`: 50.85%
-- `websites`: 39.60%
-- `socials`: 40.65% (on non-missing comparable subset)
+The best model per attribute is selected by macro-F1.
 
-ML training status:
-- Model currently trains successfully.
-- Since manual labels are still empty, current ML metrics are based on proxy labels only.
-- Final method comparison requires filling manual labels in the golden file.
+### Rule-Based Baseline
+
+A heuristic baseline using confidence scores, attribute quality, and content completeness for comparison.
+
+## Results
+
+**Holdout F1 scores (20% held-out test set, per attribute):**
+
+| Attribute  | Best Model          | Holdout F1 |
+|------------|---------------------|------------|
+| names      | Random Forest       | 0.84       |
+| categories | Random Forest       | 0.81       |
+| websites   | XGBoost             | 0.66       |
+| phones     | Logistic Regression | 0.90       |
+| addresses  | Gradient Boosting   | 0.82       |
+| emails     | Random Forest       | 0.78       |
+| socials    | Random Forest       | 0.93       |
+| **Overall (weighted)** |            | **0.82**   |
+
+**ML vs Rule-based (against golden labels):**
+
+| Method     | F1   | Precision | Recall | Accuracy |
+|------------|------|-----------|--------|----------|
+| ML         | 0.83 | 0.87      | 0.79   | 0.81     |
+| Rule-based | 0.75 | 0.69      | 0.84   | 0.68     |
 
 ## Repository Structure
 
 ```text
 fuseplace/
 ├── data/
+│   ├── project_a_samples.parquet        # Original 2,000 Overture pairs
+│   ├── yelp_verified_dataset.parquet    # 1,449 Overture-vs-Yelp pairs
+│   └── merged_dataset.parquet           # Combined dataset (3,449 pairs)
 ├── analysis/inspection/
-│   ├── attributes/
 │   ├── golden/
-│   └── side_by_side/
+│   │   ├── golden_dataset_template.json # Ground-truth labels
+│   │   ├── labeling_worksheet.csv       # Labeling export
+│   │   └── yelp_lookups.json            # Cached Yelp API responses
+│   ├── attributes/                      # Per-attribute pair samples
+│   └── side_by_side/                    # Side-by-side comparison samples
 ├── reports/
-│   ├── audit/
+│   ├── audit/                           # Data quality audit CSVs
 │   └── conflation/
+│       ├── ml_training_metrics.json     # Per-attribute CV and holdout metrics
+│       ├── ml_attribute_decisions.csv   # ML predictions per attribute
+│       ├── rule_attribute_decisions.csv # Rule-based predictions
+│       └── method_evaluation_against_golden.csv
 ├── scripts/
-│   ├── attributes/
+│   ├── inspect_dataset.py               # Schema, missingness, golden template
+│   ├── data_audit.py                    # Data quality audit
+│   ├── label_golden.py                  # Golden dataset labeling helper
+│   ├── yelp_verify.py                   # Yelp Fusion API verification
+│   ├── build_yelp_pairs.py              # Overture-vs-Yelp pair builder
+│   ├── auto_label.py                    # Domain heuristic auto-labeler
+│   ├── expand_golden.py                 # Expand golden to all records
+│   ├── fetch_overture.py                # Pull extra data from Overture Maps S3
 │   ├── conflation/
+│   │   ├── rule_based_selection.py      # Rule-based conflation
+│   │   ├── ml_selection.py              # Per-attribute ML training & prediction
+│   │   └── evaluate_methods.py          # Rule vs ML evaluation
+│   ├── attributes/                      # Per-attribute inspection scripts
 │   └── utils/
+│       ├── conflation.py                # Features, rules, proxy labels
+│       ├── parsing.py                   # Normalization (names, phones, URLs, etc.)
+│       └── io.py                        # Parquet loading, CSV/JSON writing
 ├── tests/
+│   ├── test_parsing.py
+│   └── test_rule_decision.py
 ├── requirements.txt
 └── README.md
 ```
@@ -86,43 +131,28 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## How To Reproduce
-
-Run full pipeline:
-
+On macOS, XGBoost requires OpenMP:
 ```bash
-python3 -m scripts.inspect_dataset
-python3 -m scripts.attributes.inspect_categories
-python3 -m scripts.attributes.inspect_addresses
-python3 -m scripts.attributes.inspect_phones
-python3 -m scripts.attributes.inspect_websites
-python3 -m scripts.data_audit
-python3 -m scripts.conflation.rule_based_selection
-python3 -m scripts.conflation.ml_selection
-python3 -m scripts.conflation.evaluate_methods
+brew install libomp
 ```
 
-Key outputs:
-- `analysis/inspection/golden/golden_dataset_template.json`
-- `reports/audit/audit_conflict_rates.csv`
-- `reports/conflation/rule_attribute_decisions.csv`
-- `reports/conflation/ml_attribute_decisions.csv`
-- `reports/conflation/method_evaluation_against_golden.csv`
-
-## Manual Labeling Step (Required for Final Evaluation)
-
-Fill `labels` in:
-- `analysis/inspection/golden/golden_dataset_template.json`
-
-Use:
-- `current` if conflated value is better
-- `base` if base value is better
-- leave blank when undecidable
-
-Then rerun:
+## How To Reproduce
 
 ```bash
-python3 -m scripts.conflation.ml_selection
+# 1. Inspect and audit
+python3 -m scripts.inspect_dataset
+python3 -m scripts.data_audit
+
+# 2. Build golden labels
+python3 -m scripts.label_golden
+python3 -m scripts.yelp_verify --api-key YOUR_YELP_KEY --limit 2000
+python3 -m scripts.build_yelp_pairs
+
+# 3. Run conflation methods
+python3 -m scripts.conflation.rule_based_selection --input data/merged_dataset.parquet
+python3 -m scripts.conflation.ml_selection --input data/merged_dataset.parquet
+
+# 4. Evaluate
 python3 -m scripts.conflation.evaluate_methods
 ```
 
@@ -132,8 +162,9 @@ python3 -m scripts.conflation.evaluate_methods
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-## Notes
+## Key Design Decisions
 
-- Default input parquet is `data/project_a_samples.parquet`.
-- Most scripts support `--input` for alternate parquet files.
-- This repo is designed to map directly to Project A deliverables: golden data, selection algorithms, and evaluation report artifacts.
+- **Per-attribute models** instead of one shared model — each attribute has fundamentally different signals (phone formatting vs category specificity vs address completeness).
+- **Yelp as independent ground truth** — avoids circular evaluation where the model learns the same heuristics used to create labels.
+- **Genuine Overture-vs-Yelp conflation pairs** — creates real attribute differences for training, not synthetic duplicates.
+- **Rich feature engineering** (37+ features) captures edit distance, n-gram similarity, source recency, and attribute-specific structural properties beyond simple confidence deltas.

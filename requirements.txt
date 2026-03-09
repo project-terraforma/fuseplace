@@ -5,3 +5,5 @@ rapidfuzz==3.12.1
 scikit-learn==1.7.1
 joblib==1.5.2
 pyarrow==19.0.0
+requests>=2.31.0
+xgboost>=2.0.0

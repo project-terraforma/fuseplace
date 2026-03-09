@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 from scripts.utils.io import ANALYSIS_DIR, PROJECT_ROOT, REPORTS_DIR, ensure_dir, write_csv
 
@@ -32,8 +33,20 @@ def _load_label_table(path: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _compute_metrics(y_true: pd.Series, y_pred: pd.Series) -> dict:
+    """Compute accuracy, precision, recall, and F1 for binary (current vs base) predictions."""
+    labels = ["base", "current"]
+    return {
+        "accuracy": float(accuracy_score(y_true, y_pred)),
+        "precision": float(precision_score(y_true, y_pred, pos_label="current", labels=labels, zero_division=0)),
+        "recall": float(recall_score(y_true, y_pred, pos_label="current", labels=labels, zero_division=0)),
+        "f1": float(f1_score(y_true, y_pred, pos_label="current", labels=labels, zero_division=0)),
+    }
+
+
 def _eval_single(decisions: pd.DataFrame, labels: pd.DataFrame, method_name: str) -> pd.DataFrame:
     merged = decisions.merge(labels, on=["id", "attribute"], how="inner")
+    merged = merged[merged["winner"].isin(["current", "base"]) & merged["gold_label"].isin(["current", "base"])]
     if merged.empty:
         return pd.DataFrame(
             [
@@ -42,30 +55,35 @@ def _eval_single(decisions: pd.DataFrame, labels: pd.DataFrame, method_name: str
                     "attribute": "ALL",
                     "labeled_rows": 0,
                     "accuracy": 0.0,
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "f1": 0.0,
                 }
             ]
         )
 
-    merged["correct"] = merged["winner"] == merged["gold_label"]
-
+    overall_metrics = _compute_metrics(merged["gold_label"], merged["winner"])
     overall = pd.DataFrame(
         [
             {
                 "method": method_name,
                 "attribute": "ALL",
                 "labeled_rows": int(len(merged)),
-                "accuracy": float(merged["correct"].mean()),
+                **overall_metrics,
             }
         ]
     )
 
-    per_attr = (
-        merged.groupby("attribute")["correct"]
-        .agg(["mean", "count"])
-        .reset_index()
-        .rename(columns={"mean": "accuracy", "count": "labeled_rows"})
-    )
-    per_attr.insert(0, "method", method_name)
+    per_attr_rows: list[dict] = []
+    for attr, group in merged.groupby("attribute"):
+        attr_metrics = _compute_metrics(group["gold_label"], group["winner"])
+        per_attr_rows.append({
+            "method": method_name,
+            "attribute": attr,
+            "labeled_rows": int(len(group)),
+            **attr_metrics,
+        })
+    per_attr = pd.DataFrame(per_attr_rows)
 
     return pd.concat([overall, per_attr], ignore_index=True)
 
@@ -114,7 +132,21 @@ def main() -> None:
     out_path = out_dir / "method_evaluation_against_golden.csv"
     write_csv(out_path, result)
 
-    print(f"Evaluation complete: {out_path}")
+    print(f"\nEvaluation complete: {out_path}\n")
+
+    for method in result["method"].unique():
+        method_df = result[result["method"] == method]
+        print(f"=== {method.upper()} ===")
+        for _, row in method_df.iterrows():
+            print(
+                f"  {row['attribute']:>12s}  |  "
+                f"F1={row['f1']:.4f}  "
+                f"Precision={row['precision']:.4f}  "
+                f"Recall={row['recall']:.4f}  "
+                f"Accuracy={row['accuracy']:.4f}  "
+                f"(n={int(row['labeled_rows'])})"
+            )
+        print()
 
 
 if __name__ == "__main__":
