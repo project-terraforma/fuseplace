@@ -30,25 +30,9 @@ Ground-truth labels were built in three layers:
 
 Total: **24,143 labeled attribute pairs** across 3,449 records.
 
-### ML Pipeline (Per-Attribute Hybrid)
+### ML Pipeline (Random Forest)
 
-Instead of one shared model, **7 independent models** are trained — one per attribute — since each attribute has different signal patterns (phones care about country codes; categories care about specificity).
-
-**Feature engineering** (37+ features per pair):
-- Core: confidence, quality scores, source counts, token counts, pair similarity
-- Edit distance: Levenshtein ratio, partial ratio, token sort ratio (via rapidfuzz)
-- N-gram overlap: character trigram Jaccard similarity
-- Recency: source freshness parsed from update timestamps
-- Source diversity: count of unique contributing datasets per side
-- Attribute-specific structural features (address field counts, phone country codes, category counts, HTTPS detection, URL path depth, social URL detection, character/word counts)
-
-**Model selection** — four candidates are compared per attribute via stratified 5-fold cross-validation:
-- Logistic Regression (with StandardScaler)
-- Random Forest
-- Gradient Boosting
-- XGBoost
-
-The best model per attribute is selected by macro-F1.
+A single **Random Forest** classifier is trained on all attributes using golden labels (manual + proxy). Features include confidence, quality scores, source counts, token counts, and pair similarity. Evaluated via 80/20 stratified train/test split.
 
 ### Rule-Based Baseline
 
@@ -56,18 +40,7 @@ A heuristic baseline using confidence scores, attribute quality, and content com
 
 ## Results
 
-**Holdout F1 scores (20% held-out test set, per attribute):**
-
-| Attribute  | Best Model          | Holdout F1 |
-|------------|---------------------|------------|
-| names      | Random Forest       | 0.84       |
-| categories | Random Forest       | 0.81       |
-| websites   | XGBoost             | 0.66       |
-| phones     | Logistic Regression | 0.90       |
-| addresses  | Gradient Boosting   | 0.82       |
-| emails     | Random Forest       | 0.78       |
-| socials    | Random Forest       | 0.93       |
-| **Overall (weighted)** |            | **0.82**   |
+**Holdout F1 (20% held-out test set):** Run `python3 -m scripts.conflation.ml_selection` to retrain and see current metrics.
 
 **ML vs Rule-based (against golden labels):**
 
@@ -94,7 +67,7 @@ fuseplace/
 ├── reports/
 │   ├── audit/                           # Data quality audit CSVs
 │   └── conflation/
-│       ├── ml_training_metrics.json     # Per-attribute CV and holdout metrics
+│       ├── ml_training_metrics.json     # ML holdout metrics
 │       ├── ml_attribute_decisions.csv   # ML predictions per attribute
 │       ├── rule_attribute_decisions.csv # Rule-based predictions
 │       └── method_evaluation_against_golden.csv
@@ -107,9 +80,10 @@ fuseplace/
 │   ├── auto_label.py                    # Domain heuristic auto-labeler
 │   ├── expand_golden.py                 # Expand golden to all records
 │   ├── fetch_overture.py                # Pull extra data from Overture Maps S3
+│   ├── run_conflation.py                # Run rule-based + ML + evaluation
 │   ├── conflation/
 │   │   ├── rule_based_selection.py      # Rule-based conflation
-│   │   ├── ml_selection.py              # Per-attribute ML training & prediction
+│   │   ├── ml_selection.py              # Random Forest ML training & prediction
 │   │   └── evaluate_methods.py          # Rule vs ML evaluation
 │   ├── attributes/                      # Per-attribute inspection scripts
 │   └── utils/
@@ -131,11 +105,6 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-On macOS, XGBoost requires OpenMP:
-```bash
-brew install libomp
-```
-
 ## How To Reproduce
 
 ```bash
@@ -143,16 +112,16 @@ brew install libomp
 python3 -m scripts.inspect_dataset
 python3 -m scripts.data_audit
 
-# 2. Build golden labels
+# 2. Build golden labels (if needed)
 python3 -m scripts.label_golden
-python3 -m scripts.yelp_verify --api-key YOUR_YELP_KEY --limit 2000
-python3 -m scripts.build_yelp_pairs
+# Optional: python3 -m scripts.yelp_verify --api-key YOUR_YELP_KEY --limit 2000
 
-# 3. Run conflation methods
-python3 -m scripts.conflation.rule_based_selection --input data/merged_dataset.parquet
-python3 -m scripts.conflation.ml_selection --input data/merged_dataset.parquet
+# 3. Run both rule-based and ML conflation, then evaluate
+python3 -m scripts.run_conflation
 
-# 4. Evaluate
+# Or run individually:
+python3 -m scripts.conflation.rule_based_selection
+python3 -m scripts.conflation.ml_selection
 python3 -m scripts.conflation.evaluate_methods
 ```
 
@@ -164,7 +133,6 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 
 ## Key Design Decisions
 
-- **Per-attribute models** instead of one shared model — each attribute has fundamentally different signals (phone formatting vs category specificity vs address completeness).
-- **Yelp as independent ground truth** — avoids circular evaluation where the model learns the same heuristics used to create labels.
-- **Genuine Overture-vs-Yelp conflation pairs** — creates real attribute differences for training, not synthetic duplicates.
-- **Rich feature engineering** (37+ features) captures edit distance, n-gram similarity, source recency, and attribute-specific structural properties beyond simple confidence deltas.
+- **Rule-based baseline** — confidence + quality heuristics for a simple, interpretable baseline.
+- **Random Forest ML** — single shared model trained on golden labels, suitable for an 8-week project scope.
+- **Golden labels** — manual labeling plus proxy labels (confidence + quality) for weak supervision where manual labels are sparse.
